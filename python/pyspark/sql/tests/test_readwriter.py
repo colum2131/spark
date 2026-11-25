@@ -299,6 +299,18 @@ class ReadwriterTestsMixin:
         with self.assertRaisesRegex(Exception, "'path' is not specified."):
             writer.save()
 
+    # SPARK-62355: "errorifexists" and "default" are aliases of "error", as in Scala's
+    # DataFrameWriter.mode(String)
+    def test_error_if_exists_mode_aliases(self):
+        for mode in ("error", "errorifexists", "default", "ErrorIfExists", "DEFAULT"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "data")
+                self.df.write.mode(mode).parquet(path)
+                assertDataFrameEqual(self.spark.read.parquet(path), self.df)
+                with self.assertRaises(AnalysisException) as ctx:
+                    self.df.write.mode(mode).parquet(path)
+                self.assertEqual(ctx.exception.getCondition(), "PATH_ALREADY_EXISTS")
+
     def test_changes_rejects_user_schema(self):
         with self.assertRaises(AnalysisException) as ctx:
             self.spark.read.schema("id LONG, data STRING").option("startingVersion", "1").changes(
